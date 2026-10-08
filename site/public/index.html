@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nous PDF — Download</title>
-<meta name="description" content="Nous PDF is a free PDF reader for Windows and Mac that lets you rearrange, duplicate and delete pages, search, and copy text.">
+<meta name="description" content="Nous PDF is a free PDF reader for Windows, Mac and Linux that lets you rearrange, duplicate and delete pages, search, and copy text.">
 <link rel="icon" href="/favicon.ico" sizes="64x64">
 <link rel="icon" type="image/png" href="/icon-192.png" sizes="192x192">
 <link rel="apple-touch-icon" href="/icon-192.png">
@@ -223,13 +223,14 @@ footer a { color: inherit; }
 
 <div class="phone-note" role="note">
   <strong>You're on a phone or tablet.</strong>
-  Nous PDF is a program for a Windows computer or a Mac. Open this page on your computer to download it: the address is <b>nouspdf.lionthroat.com</b>
+  Nous PDF is a program for a Windows, Mac or Linux computer. Open this page on your computer to download it: the address is <b>nouspdf.lionthroat.com</b>
 </div>
 
 <p class="tabs-label" id="tabs-label">Which computer are you using?</p>
 <div class="tabs" role="tablist" aria-labelledby="tabs-label">
   <button class="tab" role="tab" id="tab-win" aria-controls="panel-win" aria-selected="true">Windows computer</button>
   <button class="tab" role="tab" id="tab-mac" aria-controls="panel-mac" aria-selected="false" tabindex="-1">Mac</button>
+  <button class="tab" role="tab" id="tab-linux" aria-controls="panel-linux" aria-selected="false" tabindex="-1">Linux</button>
 </div>
 
 <!-- ===================== WINDOWS ===================== -->
@@ -360,6 +361,34 @@ footer a { color: inherit; }
 </ol>
 </div>
 
+<!-- ===================== LINUX ===================== -->
+<div class="panel" id="panel-linux" role="tabpanel" aria-labelledby="tab-linux" hidden>
+<ol class="steps">
+
+  <li class="step">
+    <h2>Download the package</h2>
+    <a class="btn" href="https://github.com/lionthroat/NousPDF/releases/latest/download/NousPDF-linux-amd64.deb">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M6 10l6 6 6-6M4 20h16"/></svg>
+      Download for Linux
+    </a>
+    <p class="meta" data-release-meta="NousPDF-linux-amd64.deb">.deb for Linux Mint 21+, Ubuntu 22.04+ and Debian 12+ (64-bit)</p>
+  </li>
+
+  <li class="step">
+    <h2>Install it</h2>
+    <p>Double-click the downloaded file in your <b>Downloads</b> folder, click <span class="press">Install Package</span>, and type your password. Nous PDF appears in your menu under <b>Office</b>.</p>
+    <p class="small">Or in a terminal, from your Downloads folder:</p>
+    <div class="cmd-row"><code class="cmd" id="apt-cmd">sudo apt install ./NousPDF-linux-amd64.deb</code><button class="copy-btn" type="button" data-copy="apt-cmd">Copy</button></div>
+  </li>
+
+  <li class="step">
+    <h2>Make PDFs open in Nous PDF</h2>
+    <p class="path"><span>Right-click any PDF</span> <span class="arrow">→</span> <span>Properties</span> <span class="arrow">→</span> <span>Open With</span> <span class="arrow">→</span> <span>Nous PDF</span> <span class="arrow">→</span> <span>Set as default</span></p>
+    <p class="small">That's in Linux Mint's file manager; other desktops have the same choice under Open With.</p>
+  </li>
+</ol>
+</div>
+
 <!-- ===================== USING IT ===================== -->
 <section class="more" aria-labelledby="using">
   <h2 id="using">Using Nous PDF</h2>
@@ -390,7 +419,7 @@ footer a { color: inherit; }
   </details>
   <details>
     <summary>How do I uninstall it?</summary>
-    <p><b>Windows:</b> Settings → Apps → Installed apps → Nous PDF → Uninstall. <b>Mac:</b> drag Nous PDF from Applications to the Trash.</p>
+    <p><b>Windows:</b> Settings → Apps → Installed apps → Nous PDF → Uninstall. <b>Mac:</b> drag Nous PDF from Applications to the Trash. <b>Linux:</b> remove “nous-pdf” in Software Manager, or <code>sudo apt remove nous-pdf</code>.</p>
   </details>
 </section>
 
@@ -409,10 +438,12 @@ footer a { color: inherit; }
   var touchMac = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;          // iPadOS says "Macintosh"
   var phone = /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || touchMac;
   var mac = !phone && /Mac/i.test(platform + " " + ua);
+  var linux = !phone && !mac && /Linux|X11|CrOS/i.test(platform + " " + ua) && !/Android/i.test(ua);
   if (phone) document.body.classList.add("is-phone");
 
   // Tabs
-  var tabs = [document.getElementById("tab-win"), document.getElementById("tab-mac")];
+  var names = ["win", "mac", "linux"];
+  var tabs = names.map(function (n) { return document.getElementById("tab-" + n); });
   function show(which) {
     tabs.forEach(function (t) {
       var on = t.id === "tab-" + which;
@@ -429,14 +460,16 @@ footer a { color: inherit; }
     });
   }
   tabs.forEach(function (t, i) {
-    t.addEventListener("click", function () { show(i ? "mac" : "win"); });
+    t.addEventListener("click", function () { show(names[i]); });
     t.addEventListener("keydown", function (e) {
-      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-        var next = tabs[1 - i]; next.focus(); show(next === tabs[1] ? "mac" : "win");
+      var step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+      if (step) {
+        var j = (i + step + tabs.length) % tabs.length;
+        tabs[j].focus(); show(names[j]);
       }
     });
   });
-  show(mac ? "mac" : "win");
+  show(mac ? "mac" : linux ? "linux" : "win");
 
   // Copy buttons
   document.querySelectorAll("[data-copy]").forEach(function (b) {

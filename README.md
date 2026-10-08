@@ -2,7 +2,7 @@
 
 A lightweight desktop PDF viewer with the one Acrobat feature that should never
 have been paywalled: a page panel where you can rearrange, duplicate, delete
-and rotate pages. Free and open source, for Windows and Mac.
+and rotate pages. Free and open source, for Windows, Mac and Linux.
 
 ## Download
 
@@ -13,6 +13,8 @@ Or straight from the [latest release](https://github.com/lionthroat/NousPDF/rele
 - **Windows 10/11:** `NousPDF-Setup.exe`. Installs for your account only (no admin needed).
 - **Mac, M1 and newer:** `NousPDF-mac-apple-silicon.zip`
 - **Mac, Intel:** `NousPDF-mac-intel.zip`
+- **Linux (Mint 21+, Ubuntu 22.04+, Debian 12+, 64-bit):** `NousPDF-linux-amd64.deb`.
+  Double-click it, or `sudo apt install ./NousPDF-linux-amd64.deb`
 
 Nous PDF isn't signed with a paid Microsoft or Apple certificate, so both
 systems warn you once before the first run:
@@ -30,6 +32,8 @@ systems warn you once before the first run:
   **Nous PDF** → **Always**.
 - **Mac:** select any PDF in Finder → **File → Get Info** → **Open with: Nous PDF**
   → **Change All…**
+- **Linux Mint:** right-click any PDF → **Properties** → **Open With** →
+  **Nous PDF** → **Set as default**.
 
 ## What it does
 
@@ -79,22 +83,25 @@ together; the exe needs the `_internal` folder next to it), plus
 `installer-output\NousPDF-Setup.exe` if [Inno Setup 6](https://jrsoftware.org/isinfo.php)
 is installed. Close Nous PDF before rebuilding, or the old exe can't be replaced.
 
+On Linux: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`,
+then `bash build_linux.sh` makes `nous-pdf_<version>_amd64.deb` (needs `dpkg-deb`).
+
 Run from source instead: `.venv\Scripts\python.exe nouspdf.py [file.pdf]`
 
 Tests: `.venv\Scripts\python.exe tests\test_pages.py` (also `test_find_merge.py`,
 `test_select.py`). Each opens real windows for a few seconds and prints OK.
 
 **Releases** are built by GitHub Actions (`.github/workflows/build.yml`) on
-Windows and on Apple Silicon and Intel Macs:
+Windows, Apple Silicon and Intel Macs, and Linux:
 
 1. Put the new version in the `VERSION` file (e.g. `0.2.1`) and commit.
 2. `git tag v0.2.1`, then `git push` and `git push --tags`.
 
-The build runs the tests, builds the Windows installer and checks it by
-installing, launching and uninstalling it, builds both Mac apps, and publishes
-a GitHub Release with all three files. You can also build without releasing
-from the **Actions** tab → **Build** → **Run workflow** (files land under that
-run's Artifacts).
+The build runs the tests; builds the Windows installer and the Linux .deb and
+checks each by installing it, opening a PDF with it and uninstalling it; builds
+both Mac apps; and publishes a GitHub Release with all four files. You can also
+build without releasing from the **Actions** tab → **Build** → **Run workflow**
+(files land under that run's Artifacts).
 
 ## Built on
 

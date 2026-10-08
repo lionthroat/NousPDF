@@ -14,11 +14,11 @@ VERSION=$(tr -d '[:space:]' < VERSION)
 PKG=nous-pdf
 
 "$PY" -m PyInstaller --noconfirm --clean --windowed --name NousPDF \
-    --add-data "icon.ico:." \
+    --add-data "$PWD/icon.ico:." \
     --distpath dist --workpath build --specpath build \
     --exclude-module PySide6.QtNetwork --exclude-module PySide6.QtQml \
     --exclude-module PySide6.QtQuick --exclude-module PySide6.QtPdf \
-    nouspdf.py
+    "$PWD/nouspdf.py"
 
 STAGE=build/deb
 rm -rf "$STAGE"
