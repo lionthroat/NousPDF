@@ -135,14 +135,7 @@ jobs:
           test -f /usr/share/icons/hicolor/256x256/apps/nous-pdf.png
 
           .venv/bin/python -c "import pymupdf; d=pymupdf.open(); d.new_page().insert_text((72,72),'hello'); d.save('ci-sample.pdf')"
-          xvfb-run -a bash -c '
-            nous-pdf ci-sample.pdf & pid=$!
-            sleep 10
-            kill -0 $pid || { echo "nous-pdf exited early"; exit 1; }
-            title=$(xdotool search --name "ci-sample.pdf" getwindowname | head -1)
-            echo "window: $title"
-            kill $pid
-            [ -n "$title" ]'
+          xvfb-run -a bash tests/linux_launch_check.sh ci-sample.pdf
 
           sudo apt-get remove -y -qq nous-pdf
           test ! -e /usr/bin/nous-pdf && test ! -e /opt/nous-pdf
@@ -154,6 +147,42 @@ jobs:
           name: NousPDF-linux
           path: NousPDF-linux-amd64.deb
           retention-days: 30
+
+  linux-clean:
+    # Installs the .deb on bare Linux Mint / LMDE systems: apt must pull in every
+    # system library the app uses (the package only bundles Python, Qt and MuPDF)
+    needs: linux
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [mint21.3-amd64, mint22.3-amd64, lmde7-amd64]
+    container: linuxmintd/${{ matrix.image }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: NousPDF-linux
+
+      - name: Install, open a PDF, uninstall
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -euo pipefail
+          apt-get update -qq
+          apt-get install -y -qq ./NousPDF-linux-amd64.deb xvfb xauth xdotool fonts-dejavu-core python3 > /dev/null
+          dpkg -s nous-pdf | grep -E "^(Version|Installed-Size):"
+          missing=$(find /opt/nous-pdf -type f \( -name "*.so*" -o -name NousPDF \) -print0 |
+            xargs -0 ldd 2>/dev/null | awk '/:$/ { f = $0 } /not found/ { print f, $0 }' || true)
+          [ -z "$missing" ] || { echo "$missing"; exit 1; }
+          python3 -c "open('ci-sample.pdf','wb').write(b'%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n')"
+          xvfb-run -a bash tests/linux_launch_check.sh ci-sample.pdf
+          apt-get remove -y -qq nous-pdf > /dev/null
+          test ! -e /opt/nous-pdf
 
   mac:
     strategy:
@@ -208,7 +237,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, mac, linux]
+    needs: [windows, mac, linux, linux-clean]
     runs-on: ubuntu-latest
     permissions:
       contents: write

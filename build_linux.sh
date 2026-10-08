@@ -13,12 +13,39 @@ PY=.venv/bin/python
 VERSION=$(tr -d '[:space:]' < VERSION)
 PKG=nous-pdf
 
-"$PY" -m PyInstaller --noconfirm --clean --windowed --name NousPDF \
+# --strip drops debug symbols (libpython alone goes from 32 MB to a few)
+"$PY" -m PyInstaller --noconfirm --clean --windowed --name NousPDF --strip \
     --add-data "$PWD/icon.ico:." \
     --distpath dist --workpath build --specpath build \
     --exclude-module PySide6.QtNetwork --exclude-module PySide6.QtQml \
     --exclude-module PySide6.QtQuick --exclude-module PySide6.QtPdf \
     "$PWD/nouspdf.py"
+
+# Qt drags in pieces this app never uses (Wayland, EGLFS/framebuffer/VNC
+# platforms, networking, SVG, OpenGL helpers, translations, image formats
+# other than the .ico window icon). Drop them, as build.ps1 does on Windows.
+# Kept: the X11 (xcb) platform, the GTK and portal themes (native file
+# dialogs), input methods (compose key, IBus) and ICU, which Qt Core needs.
+# Under a Wayland session Qt falls back to X11 (XWayland).
+INT=dist/NousPDF/_internal
+QT=$INT/PySide6/Qt
+rm -rf "$QT/translations" \
+    "$QT"/lib/libQt6{Network,OpenGL,Svg,WaylandClient,WlShellIntegration}.so* \
+    "$QT"/lib/libQt6{EglFS,EglFs,Quick,Qml,Pdf,VirtualKeyboard}*.so* \
+    "$QT"/plugins/{egldeviceintegrations,generic,iconengines,tls,networkinformation,wayland-*}
+find "$QT/plugins/platforms" -type f ! -name libqxcb.so -delete
+find "$QT/plugins/imageformats" -type f ! -name libqico.so -delete
+
+# PyInstaller also copies the build machine's own system libraries (GTK,
+# GLib, X11, fontconfig, OpenSSL, the C++ runtime...). Use the user's instead
+# (they're in Depends below): smaller, and an old bundled GLib or C++ runtime
+# can clash with a newer system's GTK modules or graphics drivers.
+find "$INT" -maxdepth 1 -name 'lib*.so*' ! -name 'libpython3*' -delete
+
+# Nothing left behind may need something that was just deleted
+MISSING=$(find dist/NousPDF -type f \( -name '*.so*' -o -name NousPDF \) -print0 |
+    xargs -0 ldd 2>/dev/null | awk '/:$/ { f = $0 } /not found/ { print f, $0 }' || true)
+if [ -n "$MISSING" ]; then echo "$MISSING"; echo "Pruned too much"; exit 1; fi
 
 STAGE=build/deb
 rm -rf "$STAGE"
@@ -65,7 +92,7 @@ Architecture: amd64
 Maintainer: lionthroat <lionthroat@users.noreply.github.com>
 Homepage: https://nouspdf.lionthroat.com
 Installed-Size: $SIZE_KB
-Depends: libxcb-cursor0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render-util0, libxcb-shape0, libxcb-xinerama0, libxcb-xkb1, libxkbcommon-x11-0, libegl1, libgl1, libfontconfig1, libdbus-1-3
+Depends: libxcb-cursor0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render-util0, libxcb-shape0, libxcb-xinerama0, libxcb-xkb1, libxcb-util1, libxcb-shm0, libxcb-sync1, libxcb-xfixes0, libxcb-render0, libxcb1, libx11-6, libx11-xcb1, libxkbcommon0, libxkbcommon-x11-0, libegl1, libgl1, libfontconfig1, libfreetype6, libdbus-1-3, libglib2.0-0, libgtk-3-0, libstdc++6, libssl3, libffi8, zlib1g, libzstd1, libbz2-1.0, liblzma5
 Description: Lightweight PDF viewer with a page panel
  Nous PDF opens PDFs and lets you rearrange, duplicate, delete and rotate
  pages, merge PDFs by dragging them in, find text, and select and copy text.
