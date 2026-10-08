@@ -129,17 +129,14 @@ jobs:
         run: |
           cd dist/NousPDF/_internal
           echo "== top level"; ls -S1s | head -150
-          echo "== Qt tree"; find PySide6 shiboken6 -type f -printf '%k %p
-' | sort -k2
+          echo "== Qt tree"; find PySide6 shiboken6 -type f -printf '%k %p\n' | sort -k2
           echo "== ldd Qt libs/plugins (Qt-internal deps only)"
           for f in PySide6/Qt/lib/*.so* $(find PySide6/Qt/plugins -name '*.so') PySide6/*.so; do
-            echo "-- $f: $(ldd "$f" | grep -oE 'libQt6[A-Za-z]+|libicu[a-z]+|not found' | sort -u | tr '
-' ' ')"
+            echo "-- $f: $(ldd "$f" | grep -oE 'libQt6[A-Za-z]+|libicu[a-z]+|not found' | sort -u | xargs)"
           done
           echo "== who needs top-level libs"
           for f in $(find PySide6 pymupdf python3.14 shiboken6 -name '*.so*') ../NousPDF libpython3.14.so.1.0; do
-            echo "-- $f: $(readelf -d "$f" 2>/dev/null | grep NEEDED | grep -oE '\[[^]]+\]' | tr -d '[]' | tr '
-' ' ')"
+            echo "-- $f: $(readelf -d "$f" 2>/dev/null | grep NEEDED | grep -oE '\[[^]]+\]' | tr -d '[]' | xargs)"
           done
 
       - name: Check the .deb (install, open a PDF, uninstall)
