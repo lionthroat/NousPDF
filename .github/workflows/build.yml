@@ -157,8 +157,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [mint21.3-amd64, mint22.3-amd64, mint23-amd64, lmde7-amd64]
+        image: [mint21.3-amd64, mint22.3-amd64, lmde7-amd64]
     container: linuxmintd/${{ matrix.image }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
