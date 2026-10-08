@@ -478,6 +478,9 @@ class Viewer(QScrollArea):
         if obj is not getattr(self, "container", None):    # QScrollArea filters too
             return super().eventFilter(obj, event)
         t = event.type()
+        if t == QEvent.NativeGesture and event.gestureType() == Qt.ZoomNativeGesture:
+            self.set_zoom(self.zoom * (1 + event.value()))      # trackpad pinch (macOS)
+            return True
         if t == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
             self.setFocus()
             pos = event.position().toPoint()
@@ -622,7 +625,9 @@ class MainWindow(QMainWindow):
         self.a_redo = self.act("Redo", self.redo, [K("Ctrl+Y"), K("Ctrl+Shift+Z")])
         self.a_dup = self.act("Duplicate", self.duplicate_selected, K("Ctrl+D"),
                               "Duplicate selected pages (Ctrl+D)")
-        self.a_del = self.act("Delete", self.delete_selected, K.Delete,
+        # Mac keyboards' "delete" key is Backspace
+        del_keys = [K(K.Delete)] + ([K(Qt.Key_Backspace)] if sys.platform == "darwin" else [])
+        self.a_del = self.act("Delete", self.delete_selected, del_keys,
                               "Delete selected pages (Del)")
         self.a_rot_l = self.act("Rotate Left", lambda: self.rotate_selected(-90), K("Ctrl+Shift+R"),
                                 "Rotate selected pages left (Ctrl+Shift+R)")
@@ -633,8 +638,12 @@ class MainWindow(QMainWindow):
         self.a_select_all = self.act("Select All Pages", self.pages.selectAll, K.SelectAll)
         self.a_copy = self.act("Copy", self.copy_selection, K.Copy, "Copy selected text (Ctrl+C)")
         self.a_find = self.act("Find…", self.show_find, K.Find, "Find text (Ctrl+F)")
-        self.a_find_next = self.act("Find Next", lambda: self.step_hit(1), K("F3"))
-        self.a_find_prev = self.act("Find Previous", lambda: self.step_hit(-1), K("Shift+F3"))
+        # F3 on Windows; Cmd+G / Shift+Cmd+G on macOS (the platform's own "find next")
+        mac = sys.platform == "darwin"
+        self.a_find_next = self.act("Find Next", lambda: self.step_hit(1),
+                                    K(K.FindNext) if mac else K("F3"))
+        self.a_find_prev = self.act("Find Previous", lambda: self.step_hit(-1),
+                                    K(K.FindPrevious) if mac else K("Shift+F3"))
         self.a_zoom_in = self.act("Zoom In", lambda: self.viewer.step_zoom(1), [K.ZoomIn, K("Ctrl+=")])
         self.a_zoom_out = self.act("Zoom Out", lambda: self.viewer.step_zoom(-1), K.ZoomOut)
         self.a_fit = self.act("Fit Width", self.viewer.set_fit_width, K("Ctrl+0"))
@@ -1258,14 +1267,43 @@ class MainWindow(QMainWindow):
                 break
 
 
+class App(QApplication):
+    """Owns the windows. On Windows a double-clicked PDF arrives as a command-line
+    argument; on macOS (Finder double-click, Open With, dropping on the Dock icon)
+    it arrives as a FileOpen event, and each file gets its own window there."""
+
+    def __init__(self, argv):
+        super().__init__(argv)
+        self.setApplicationName(APP_NAME)
+        self.windows = []
+
+    def new_window(self):
+        win = MainWindow()
+        win.setAttribute(Qt.WA_DeleteOnClose)
+        self.windows.append(win)
+        win.destroyed.connect(lambda *_, w=win: self.windows.remove(w) if w in self.windows else None)
+        win.show()
+        return win
+
+    def open_file(self, path):
+        win = next((w for w in self.windows if not w.refs), None) or self.new_window()
+        win.open_path(path)
+        win.raise_()
+        win.activateWindow()
+
+    def event(self, event):
+        if event.type() == QEvent.FileOpen and event.file():
+            self.open_file(event.file())
+            return True
+        return super().event(event)
+
+
 def main():
-    app = QApplication(sys.argv)
-    app.setApplicationName(APP_NAME)
-    win = MainWindow()
-    win.show()
+    app = App(sys.argv)
+    app.new_window()
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     if args and os.path.isfile(args[0]):
-        win.open_path(args[0])
+        app.open_file(args[0])
     sys.exit(app.exec())
 
 

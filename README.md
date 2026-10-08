@@ -65,6 +65,34 @@ Right-click any PDF → **Open with** → **Choose another app** → scroll down
 
 Rebuilding puts the exe back at the same path, so the association keeps working.
 
+## Mac version
+
+GitHub builds `Nous PDF.app` on its Mac machines (Apple Silicon and Intel)
+whenever a version tag is pushed (`git tag v0.1.1`, then `git push --tags`), or
+on demand from the repo's **Actions** tab → **Build macOS app** → **Run workflow**.
+Download from that run's **Artifacts**. GitHub wraps each in an extra zip; the
+inner `NousPDF-mac-apple-silicon.zip` / `NousPDF-mac-intel.zip` is the file to send.
+
+Not sure which Mac? Apple menu → **About This Mac**: "Chip: Apple M…" means
+Apple Silicon, "Processor: … Intel" means Intel.
+
+**Installing on the Mac:**
+
+1. Double-click the zip, then drag **Nous PDF** into **Applications**.
+2. Open it. macOS will refuse the first time, because the app isn't paid-for
+   and signed by Apple. Click **Done** (not "Move to Trash").
+3. Open **System Settings → Privacy & Security**, scroll down, click
+   **Open Anyway** next to Nous PDF, and confirm. That's the only time.
+4. To make it the default: select any PDF in Finder → **File → Get Info** →
+   **Open with: Nous PDF** → **Change All…**
+
+If macOS ever says the app "is damaged", run this once in Terminal:
+`xattr -cr "/Applications/Nous PDF.app"`
+
+On the Mac, Ctrl shortcuts are Cmd (Cmd+F, Cmd+C…), next/previous match is
+Cmd+G / Shift+Cmd+G (or Enter / Shift+Enter in the find box), Backspace deletes pages,
+pinch zooms, and each PDF opens in its own window.
+
 ## Built on
 
 - [PyMuPDF](https://pymupdf.readthedocs.io/) (MuPDF): rendering and page editing. AGPL-3.0.
