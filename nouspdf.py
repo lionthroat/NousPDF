@@ -562,7 +562,9 @@ class MainWindow(QMainWindow):
         self.text_cache = {}      # (source, page) -> PageText
 
         self.setWindowIcon(QIcon(resource_path("icon.ico")))
-        self.resize(1200, 860)
+        # 1200x860, shrunk to fit small screens (an 11" laptop is 1366x768)
+        avail = QApplication.primaryScreen().availableGeometry()
+        self.resize(min(1200, int(avail.width() * 0.92)), min(860, int(avail.height() * 0.92)))
         self.setAcceptDrops(True)
 
         self.pages = PageList()

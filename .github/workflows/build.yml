@@ -1,4 +1,5 @@
-# Builds Nous PDF for Windows (installer) and macOS (Apple Silicon + Intel).
+# Builds Nous PDF for Windows (installer), macOS (Apple Silicon + Intel) and
+# Linux (.deb for Mint/Ubuntu/Debian).
 #
 # Runs when you push a version tag, or when you press "Run workflow" on the
 # repo's Actions tab. Not on every push: Mac minutes are expensive.
@@ -6,8 +7,8 @@
 #   1. put the new version in the VERSION file (e.g. 0.2.1) and commit
 #   2. git tag v0.2.1 && git push && git push --tags
 #
-# A tag run also publishes a GitHub Release with NousPDF-Setup.exe and the two
-# Mac zips attached. "Run workflow" runs only build (files under Artifacts).
+# A tag run also publishes a GitHub Release with NousPDF-Setup.exe, the two
+# Mac zips and NousPDF-linux-amd64.deb. "Run workflow" only builds (files under Artifacts).
 
 name: Build
 
@@ -88,6 +89,72 @@ jobs:
           path: installer-output/NousPDF-Setup.exe
           retention-days: 30
 
+  linux:
+    # Built on an older Ubuntu so the package runs on Linux Mint 21+ / Ubuntu 22.04+
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 \
+            libxkbcommon-x11-0 libegl1 libgl1 xvfb xdotool desktop-file-utils
+          python -m venv .venv
+          .venv/bin/python -m pip install -r requirements.txt
+
+      - name: Test (page editing)
+        run: .venv/bin/python tests/test_pages.py
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+      - name: Test (find, merge, text selection)
+        continue-on-error: true
+        run: |
+          xvfb-run -a .venv/bin/python tests/test_find_merge.py
+          xvfb-run -a .venv/bin/python tests/test_select.py
+
+      - name: Build .deb
+        run: |
+          bash build_linux.sh
+          mv nous-pdf_*_amd64.deb NousPDF-linux-amd64.deb
+
+      - name: Check the .deb (install, open a PDF, uninstall)
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y -qq ./NousPDF-linux-amd64.deb
+          dpkg -s nous-pdf | grep -E "^(Version|Installed-Size):"
+          test -x /usr/bin/nous-pdf
+          desktop-file-validate /usr/share/applications/nous-pdf.desktop
+          grep "application/pdf=.*nous-pdf.desktop" /usr/share/applications/mimeinfo.cache
+          test -f /usr/share/icons/hicolor/256x256/apps/nous-pdf.png
+
+          .venv/bin/python -c "import pymupdf; d=pymupdf.open(); d.new_page().insert_text((72,72),'hello'); d.save('ci-sample.pdf')"
+          xvfb-run -a bash -c '
+            nous-pdf ci-sample.pdf & pid=$!
+            sleep 10
+            kill -0 $pid || { echo "nous-pdf exited early"; exit 1; }
+            title=$(xdotool search --name "ci-sample.pdf" getwindowname | head -1)
+            echo "window: $title"
+            kill $pid
+            [ -n "$title" ]'
+
+          sudo apt-get remove -y -qq nous-pdf
+          test ! -e /usr/bin/nous-pdf && test ! -e /opt/nous-pdf
+          ! grep -q "nous-pdf.desktop" /usr/share/applications/mimeinfo.cache
+          echo "Install, launch and uninstall all OK"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NousPDF-linux
+          path: NousPDF-linux-amd64.deb
+          retention-days: 30
+
   mac:
     strategy:
       fail-fast: false
@@ -141,7 +208,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, mac]
+    needs: [windows, mac, linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -167,5 +234,6 @@ jobs:
           body: |
             **Windows:** download `NousPDF-Setup.exe` and open it.
             **Mac:** `NousPDF-mac-apple-silicon.zip` for M1 and newer, `NousPDF-mac-intel.zip` for Intel Macs.
+            **Linux (Mint, Ubuntu, Debian):** download `NousPDF-linux-amd64.deb` and double-click it, or `sudo apt install ./NousPDF-linux-amd64.deb`.
 
             Step-by-step instructions (including the one-time security warnings): https://nouspdf.lionthroat.com
