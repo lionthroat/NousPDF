@@ -127,10 +127,20 @@ jobs:
 
       - name: TEMP largest files
         run: |
-          ls -l NousPDF-linux-amd64.deb
-          du -sh dist/NousPDF build/deb/opt/nous-pdf
-          find dist/NousPDF -type f -printf '%s %p\n' | sort -rn | head -60
-          du -sk dist/NousPDF/_internal/* dist/NousPDF/_internal/PySide6/* dist/NousPDF/_internal/PySide6/Qt/* dist/NousPDF/_internal/PySide6/Qt/plugins/* 2>/dev/null | sort -rn | head -60
+          cd dist/NousPDF/_internal
+          echo "== top level"; ls -S1s | head -150
+          echo "== Qt tree"; find PySide6 shiboken6 -type f -printf '%k %p
+' | sort -k2
+          echo "== ldd Qt libs/plugins (Qt-internal deps only)"
+          for f in PySide6/Qt/lib/*.so* $(find PySide6/Qt/plugins -name '*.so') PySide6/*.so; do
+            echo "-- $f: $(ldd "$f" | grep -oE 'libQt6[A-Za-z]+|libicu[a-z]+|not found' | sort -u | tr '
+' ' ')"
+          done
+          echo "== who needs top-level libs"
+          for f in $(find PySide6 pymupdf python3.14 shiboken6 -name '*.so*') ../NousPDF libpython3.14.so.1.0; do
+            echo "-- $f: $(readelf -d "$f" 2>/dev/null | grep NEEDED | grep -oE '\[[^]]+\]' | tr -d '[]' | tr '
+' ' ')"
+          done
 
       - name: Check the .deb (install, open a PDF, uninstall)
         run: |
