@@ -19,7 +19,6 @@ on:
 
 jobs:
   windows:
-    if: false  # TEMP linux-prune
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
@@ -186,7 +185,6 @@ jobs:
           test ! -e /opt/nous-pdf
 
   mac:
-    if: false  # TEMP linux-prune
     strategy:
       fail-fast: false
       matrix:
