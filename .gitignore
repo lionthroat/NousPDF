@@ -6,3 +6,4 @@ __pycache__/
 *.nouspdf-tmp
 *.zip
 installer-output/
+.wrangler/
