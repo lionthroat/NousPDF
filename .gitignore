@@ -5,3 +5,4 @@ __pycache__/
 *.pyc
 *.nouspdf-tmp
 *.zip
+installer-output/

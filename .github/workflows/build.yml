@@ -1,0 +1,171 @@
+# Builds Nous PDF for Windows (installer) and macOS (Apple Silicon + Intel).
+#
+# Runs when you push a version tag, or when you press "Run workflow" on the
+# repo's Actions tab. Not on every push: Mac minutes are expensive.
+#
+#   1. put the new version in the VERSION file (e.g. 0.2.1) and commit
+#   2. git tag v0.2.1 && git push && git push --tags
+#
+# A tag run also publishes a GitHub Release with NousPDF-Setup.exe and the two
+# Mac zips attached. "Run workflow" runs only build (files under Artifacts).
+
+name: Build
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install
+        run: |
+          python -m venv .venv
+          .venv\Scripts\python.exe -m pip install -r requirements.txt
+          choco install innosetup -y --no-progress
+
+      - name: Test (page editing)
+        run: .venv\Scripts\python.exe tests\test_pages.py
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+      - name: Test (find, merge, text selection)
+        continue-on-error: true
+        run: |
+          .venv\Scripts\python.exe tests\test_find_merge.py
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          .venv\Scripts\python.exe tests\test_select.py
+
+      - name: Build app + installer
+        run: powershell -ExecutionPolicy Bypass -File build.ps1
+
+      - name: Check the installer (install, open a PDF, uninstall)
+        run: |
+          $ErrorActionPreference = "Stop"
+          $app = "$env:LOCALAPPDATA\Programs\Nous PDF"
+          Start-Process installer-output\NousPDF-Setup.exe -Wait -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=desktopicon"
+          foreach ($p in "$app\NousPDF.exe", "$app\_internal",
+                         "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Nous PDF.lnk",
+                         "$env:USERPROFILE\Desktop\Nous PDF.lnk") {
+            if (-not (Test-Path $p)) { throw "missing after install: $p" }
+          }
+          $owp = Get-ItemProperty "HKCU:\Software\Classes\.pdf\OpenWithProgids"
+          if (-not ($owp.PSObject.Properties.Name -contains "NousPDF.Document")) { throw "not in Open with" }
+          $cmd = (Get-ItemProperty "HKCU:\Software\Classes\NousPDF.Document\shell\open\command")."(default)"
+          if ($cmd -ne "`"$app\NousPDF.exe`" `"%1`"") { throw "bad open command: $cmd" }
+          if (-not (Get-ItemProperty "HKCU:\Software\RegisteredApplications")."Nous PDF") { throw "not in Default apps" }
+          $ver = (Get-Item "$app\NousPDF.exe").VersionInfo
+          Write-Host "Installed: $($ver.FileDescription) $($ver.FileVersion)"
+
+          .venv\Scripts\python.exe -c "import pymupdf; d=pymupdf.open(); d.new_page().insert_text((72,72),'hello'); d.save('ci-sample.pdf')"
+          $proc = Start-Process "$app\NousPDF.exe" -ArgumentList "`"$PWD\ci-sample.pdf`"" -PassThru
+          Start-Sleep 10
+          if ($proc.HasExited) { throw "Nous PDF exited right after opening a PDF (code $($proc.ExitCode))" }
+          Write-Host "Running after 10s, window: '$((Get-Process -Id $proc.Id).MainWindowTitle)'"
+          Stop-Process -Id $proc.Id -Force
+          Start-Sleep 2
+
+          Start-Process "$app\unins000.exe" -Wait -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"
+          for ($i = 0; $i -lt 30 -and (Test-Path "$app\NousPDF.exe"); $i++) { Start-Sleep 1 }
+          foreach ($p in "$app\NousPDF.exe", "$env:USERPROFILE\Desktop\Nous PDF.lnk",
+                         "HKCU:\Software\Classes\NousPDF.Document", "HKCU:\Software\Nous PDF") {
+            if (Test-Path $p) { throw "left behind after uninstall: $p" }
+          }
+          if ((Get-ItemProperty "HKCU:\Software\RegisteredApplications" -ErrorAction SilentlyContinue)."Nous PDF") { throw "Default apps entry left behind" }
+          Write-Host "Install, launch and uninstall all OK"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NousPDF-windows
+          path: installer-output/NousPDF-Setup.exe
+          retention-days: 30
+
+  mac:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15          # Apple Silicon (M1 and newer)
+            arch: apple-silicon
+          - runner: macos-15-intel    # older Intel Macs
+            arch: intel
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install
+        run: python -m pip install -r requirements.txt pillow
+
+      - name: Test (page editing)
+        run: python tests/test_pages.py
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+      - name: Test (find, merge, text selection)
+        continue-on-error: true
+        run: |
+          python tests/test_find_merge.py
+          python tests/test_select.py
+
+      - name: Build
+        run: python -m PyInstaller --noconfirm --clean NousPDF-mac.spec
+
+      - name: Check the app starts
+        run: |
+          "dist/Nous PDF.app/Contents/MacOS/NousPDF" &
+          pid=$!
+          sleep 8
+          kill -0 $pid && echo "still running after 8s" && kill $pid
+
+      - name: Zip
+        # ditto keeps the app's symlinks and signature intact (a plain zip breaks them)
+        run: ditto -c -k --keepParent "dist/Nous PDF.app" "NousPDF-mac-${{ matrix.arch }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NousPDF-mac-${{ matrix.arch }}
+          path: NousPDF-mac-${{ matrix.arch }}.zip
+          retention-days: 30
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, mac]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag matches VERSION file
+        run: |
+          want="$(tr -d '[:space:]' < VERSION)"
+          if [ "${GITHUB_REF_NAME#v}" != "$want" ]; then
+            echo "Tag $GITHUB_REF_NAME doesn't match VERSION ($want)"; exit 1
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-files
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Nous PDF ${{ github.ref_name }}
+          files: release-files/*
+          body: |
+            **Windows:** download `NousPDF-Setup.exe` and open it.
+            **Mac:** `NousPDF-mac-apple-silicon.zip` for M1 and newer, `NousPDF-mac-intel.zip` for Intel Macs.
+
+            Step-by-step instructions (including the one-time security warnings): https://nouspdf.lionthroat.com

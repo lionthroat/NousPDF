@@ -1,20 +1,32 @@
-# Builds dist\NousPDF\NousPDF.exe. Run from anywhere:
-#   powershell -ExecutionPolicy Bypass -File C:\Users\wrong\NousPDF\build.ps1
+# Builds dist\NousPDF\NousPDF.exe, and installer-output\NousPDF-Setup.exe if
+# Inno Setup 6 is installed. Run from anywhere:
+#   powershell -ExecutionPolicy Bypass -File build.ps1
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 $py = Join-Path $root ".venv\Scripts\python.exe"
 
 & $py -m pip install --quiet -r (Join-Path $root "requirements.txt")
 & $py (Join-Path $root "make_icon.py")
+
+# Version comes from the VERSION file (one place for Windows, Mac and the installer)
+$version = (Get-Content (Join-Path $root "VERSION") -Raw).Trim()
+$parts = @($version.Split(".") + @("0", "0", "0"))[0..3]
+New-Item -ItemType Directory -Force (Join-Path $root "build") | Out-Null
+$versionFile = Join-Path $root "build\version_info.txt"
+(Get-Content (Join-Path $root "version_info.txt") -Raw).
+    Replace("{VERSION_TUPLE}", ($parts -join ", ")).Replace("{VERSION}", $version) |
+    Set-Content $versionFile -Encoding utf8
+
 & $py -m PyInstaller --noconfirm --clean --windowed --name NousPDF `
     --icon (Join-Path $root "icon.ico") `
-    --version-file (Join-Path $root "version_info.txt") `
+    --version-file $versionFile `
     --add-data "$(Join-Path $root 'icon.ico');." `
     --distpath (Join-Path $root "dist") --workpath (Join-Path $root "build") `
     --specpath (Join-Path $root "build") `
     --exclude-module PySide6.QtNetwork --exclude-module PySide6.QtQml `
     --exclude-module PySide6.QtQuick --exclude-module PySide6.QtPdf `
     (Join-Path $root "nouspdf.py")
+if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
 
 # Qt drags in pieces this app never uses (QML, software OpenGL, Qt's own PDF
 # module, TLS, the on-screen keyboard, translations). Drop them.
@@ -26,5 +38,15 @@ $drop = @("opengl32sw.dll", "Qt6Quick*.dll", "Qt6Qml*.dll", "Qt6Pdf*.dll", "Qt6N
           "plugins\iconengines", "Qt6Svg.dll")
 foreach ($d in $drop) { Remove-Item (Join-Path $qt $d) -Recurse -Force -ErrorAction SilentlyContinue }
 $mb = (Get-ChildItem (Join-Path $root "dist\NousPDF") -Recurse -File | Measure-Object Length -Sum).Sum / 1MB
-Write-Host ("Size: {0:N0} MB" -f $mb)
-Write-Host "Built: $(Join-Path $root 'dist\NousPDF\NousPDF.exe')"
+Write-Host ("Built: {0} (version {1}, {2:N0} MB)" -f (Join-Path $root 'dist\NousPDF\NousPDF.exe'), $version, $mb)
+
+# The installer, if Inno Setup 6 is around
+$iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+          "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($iscc) {
+    & $iscc /Q (Join-Path $root "installer.iss")
+    if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
+    Write-Host "Built: $(Join-Path $root 'installer-output\NousPDF-Setup.exe')"
+} else {
+    Write-Host "(Inno Setup 6 not found, so no installer; GitHub builds it on version tags)"
+}

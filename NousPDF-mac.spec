@@ -4,8 +4,9 @@
 # (needs Pillow, which turns icon.png into the .icns macOS wants)
 import os
 
-VERSION = "0.1.0"
 root = SPECPATH
+with open(os.path.join(root, "VERSION")) as f:
+    VERSION = f.read().strip()
 
 a = Analysis(
     [os.path.join(root, "nouspdf.py")],
